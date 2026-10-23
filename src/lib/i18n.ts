@@ -272,6 +272,9 @@ const translations: Record<Locale, Record<string, string>> = {
         'acct.edit_tags': 'Edit tags',
         'acct.no_tags': 'No tags',
         'acct.tags_full': '10 tags is the maximum.',
+        'acct.remove_tag': 'Remove tag {tag}',
+        'acct.clear_tags': 'Clear tags',
+        'acct.clear_tags_confirm': 'Remove all admin tags stored in this browser for this server?',
 
         // DNS tab
         'dns.total': '{count} overrides',
@@ -853,6 +856,9 @@ const translations: Record<Locale, Record<string, string>> = {
         'acct.edit_tags': 'ویرایش برچسب‌ها',
         'acct.no_tags': 'بدون برچسب',
         'acct.tags_full': 'حداکثر ۱۰ برچسب.',
+        'acct.remove_tag': 'حذف برچسب {tag}',
+        'acct.clear_tags': 'پاک کردن برچسب‌ها',
+        'acct.clear_tags_confirm': 'همه برچسب‌های ادمین ذخیره‌شده در این مرورگر برای این سرور حذف شوند؟',
 
         'dns.total': '{count} بازنویسی',
         'dns.lookup': 'کلید جستجو',
@@ -1401,6 +1407,9 @@ const translations: Record<Locale, Record<string, string>> = {
         'acct.edit_tags': 'Editar etiquetas',
         'acct.no_tags': 'Sin etiquetas',
         'acct.tags_full': 'El máximo es 10 etiquetas.',
+        'acct.remove_tag': 'Quitar etiqueta {tag}',
+        'acct.clear_tags': 'Borrar etiquetas',
+        'acct.clear_tags_confirm': '¿Eliminar todas las etiquetas de admin guardadas en este navegador para este servidor?',
 
         'dns.total': '{count} sobrecargas',
         'dns.lookup': 'Clave de búsqueda',
@@ -1951,6 +1960,9 @@ const translations: Record<Locale, Record<string, string>> = {
         'acct.edit_tags': 'Редактировать теги',
         'acct.no_tags': 'Нет тегов',
         'acct.tags_full': 'Не больше 10 тегов.',
+        'acct.remove_tag': 'Удалить тег {tag}',
+        'acct.clear_tags': 'Очистить теги',
+        'acct.clear_tags_confirm': 'Удалить все теги админа, сохранённые в этом браузере для этого сервера?',
 
         'dns.total': '{count} переопределений',
         'dns.lookup': 'Ключ поиска',

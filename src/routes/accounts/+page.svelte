@@ -23,12 +23,16 @@
   import PageLoader from "$lib/components/PageLoader.svelte";
   import {
     addTag,
+    clearServer,
     clearUser,
-    getTags,
+    loadServerTags,
     MAX_TAGS_PER_USER,
     normalizeUsername,
+    pruneAbsentUsers,
     removeTag,
     serverKeyFromBaseUrl,
+    STORAGE_KEY,
+    tagsForUser,
     tagsMatchQuery,
   } from "$lib/userTags";
 
@@ -64,9 +68,16 @@
 
   let serverKey = $derived(serverKeyFromBaseUrl(store.baseUrl));
 
-  function tagsFor(username: string): string[] {
+  /** One localStorage read per tag change or server change, shared by search and rows. */
+  let serverTags = $derived.by(() => {
     void tagsEpoch;
-    return getTags(serverKey, username);
+    return loadServerTags(serverKey);
+  });
+
+  let hasServerTags = $derived(Object.keys(serverTags).length > 0);
+
+  function tagsFor(username: string): string[] {
+    return tagsForUser(serverTags, username);
   }
 
   function refreshTags() {
@@ -74,7 +85,7 @@
   }
 
   function submitTagFor(username: string) {
-    const before = getTags(serverKey, username);
+    const before = tagsFor(username);
     const next = addTag(serverKey, username, tagDraft);
     const added = next.length > before.length;
     const duplicate = before.some(
@@ -92,7 +103,7 @@
 
   function submitNewAccountTag() {
     if (!store.newAccount) return;
-    const before = getTags(serverKey, store.newAccount.email);
+    const before = tagsFor(store.newAccount.email);
     const next = addTag(serverKey, store.newAccount.email, newAccountTagDraft);
     const duplicate = before.some(
       (t) => t.toLowerCase() === newAccountTagDraft.trim().toLowerCase(),
@@ -172,7 +183,7 @@
 
   let sortedAccounts = $derived.by(() => {
     if (!store.accounts) return [];
-    void tagsEpoch;
+    const tags = serverTags;
     let list = [...store.accounts.accounts];
     // Filter by search query (username or local admin tags)
     if (searchQuery.trim()) {
@@ -180,7 +191,7 @@
       list = list.filter(
         (a) =>
           a.username.toLowerCase().includes(q) ||
-          tagsMatchQuery(serverKey, a.username, q),
+          tagsMatchQuery(tags, a.username, q),
       );
     }
     if (sortBy === "size") {
@@ -232,6 +243,34 @@
       newAccountTagDraft = "";
     }
   });
+
+  // `storage` fires in other tabs when they write this key.
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== STORAGE_KEY) return;
+      tagsEpoch += 1;
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  });
+
+  // Drop notes for accounts removed outside this page (CLI, delete-all, another tab).
+  $effect(() => {
+    const accounts = store.accounts?.accounts;
+    if (!accounts) return;
+    const keep = accounts.map((a) => a.username);
+    if (store.newAccount?.email) keep.push(store.newAccount.email);
+    if (pruneAbsentUsers(serverKey, keep)) tagsEpoch += 1;
+  });
+
+  function clearTagsForServer() {
+    if (!confirm(_("acct.clear_tags_confirm"))) return;
+    clearServer(serverKey);
+    editingTagsFor = "";
+    tagDraft = "";
+    refreshTags();
+  }
 
   let isRegistrationClosed = $derived(
     store.settings?.registration === "closed",
@@ -358,6 +397,15 @@
             >{sortAsc ? "↑" : "↓"}</span
           >{/if}
       </button>
+      {#if hasServerTags}
+        <button
+          type="button"
+          onclick={clearTagsForServer}
+          class="px-2.5 py-1 text-xs rounded-lg border border-border text-text-2 hover:border-danger/40 hover:text-danger transition-colors"
+        >
+          {_("acct.clear_tags")}
+        </button>
+      {/if}
     </div>
 
     <!-- Pagination -->
@@ -438,39 +486,40 @@
             <span>{_("acct.last_login")}: {fmtDate(acct.last_login_at)}</span>
           </div>
           <!-- Admin tags (localStorage only — never sent to the server) -->
-          <div class="mt-1.5 flex flex-wrap items-center gap-1">
+          <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
             {#each userTags as tag (tag)}
               <span
-                class="inline-flex items-center gap-0.5 max-w-full px-1.5 py-0.5 rounded-md text-[10px] bg-accent/10 text-accent border border-accent/20"
+                class="inline-flex items-center gap-1 max-w-full ps-2 pe-1 py-0.5 rounded-md text-xs bg-accent/10 text-accent border border-accent/20"
               >
                 <span class="truncate">{tag}</span>
                 {#if editingTagsFor === acct.username}
                   <button
                     type="button"
-                    class="shrink-0 p-0.5 rounded hover:bg-accent/20 text-accent/80"
+                    class="shrink-0 inline-flex items-center justify-center min-w-8 min-h-8 rounded hover:bg-accent/20 text-accent/80"
                     onclick={() => dropTag(acct.username, tag)}
-                    aria-label={_("action.delete")}
+                    aria-label={_("acct.remove_tag", { tag })}
                   >
-                    <X size={9} />
+                    <X size={14} />
                   </button>
                 {/if}
               </span>
             {/each}
             {#if editingTagsFor === acct.username && userTags.length >= MAX_TAGS_PER_USER}
-              <span class="text-[10px] text-text-2/70">{_("acct.tags_full")}</span>
+              <span class="text-xs text-text-2/70">{_("acct.tags_full")}</span>
               <button
                 type="button"
                 onclick={() => {
                   editingTagsFor = "";
                   tagDraft = "";
                 }}
-                class="px-1 py-0.5 text-[9px] rounded border border-border text-text-2"
+                class="inline-flex items-center justify-center min-w-8 min-h-8 rounded border border-border text-text-2"
+                aria-label={_("action.cancel")}
               >
-                ✕
+                <X size={14} />
               </button>
             {:else if editingTagsFor === acct.username}
               <form
-                class="inline-flex items-center gap-1 min-w-0"
+                class="inline-flex items-center gap-1.5 min-w-0"
                 onsubmit={(e) => {
                   e.preventDefault();
                   submitTagFor(acct.username);
@@ -478,14 +527,14 @@
               >
                 <input
                   type="text"
-                  class="w-28 max-w-[40vw] px-1.5 py-0.5 text-[10px] rounded border border-accent/40 bg-surface-1 text-text-1 focus:outline-none"
+                  class="w-36 max-w-[50vw] px-2 py-1.5 text-xs rounded border border-accent/40 bg-surface-1 text-text-1 focus:outline-none"
                   bind:value={tagDraft}
                   placeholder={_("acct.tags_placeholder")}
                   use:focusOnMount
                 />
                 <button
                   type="submit"
-                  class="px-1.5 py-0.5 text-[9px] rounded bg-accent text-white hover:bg-accent/80"
+                  class="px-2.5 py-1.5 text-xs rounded bg-accent text-white hover:bg-accent/80"
                 >
                   {_("acct.add_tag")}
                 </button>
@@ -495,15 +544,16 @@
                     editingTagsFor = "";
                     tagDraft = "";
                   }}
-                  class="px-1 py-0.5 text-[9px] rounded border border-border text-text-2"
+                  class="inline-flex items-center justify-center min-w-8 min-h-8 rounded border border-border text-text-2"
+                  aria-label={_("action.cancel")}
                 >
-                  ✕
+                  <X size={14} />
                 </button>
               </form>
             {:else}
               <button
                 type="button"
-                class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded-md border border-border/60 text-text-2/70 hover:text-text-2 hover:border-text-2/40 transition-colors"
+                class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border/60 text-text-2/70 hover:text-text-2 hover:border-text-2/40 transition-colors"
                 onclick={() => {
                   editingTagsFor = acct.username;
                   tagDraft = "";
@@ -511,7 +561,7 @@
                 }}
                 title={_("acct.tags_hint")}
               >
-                <Tag size={9} />
+                <Tag size={12} />
                 {userTags.length === 0 ? _("acct.add_tag") : _("acct.edit_tags")}
               </button>
             {/if}
@@ -655,32 +705,32 @@
       <div class="mb-4 p-3 rounded-lg border border-border bg-surface-2/40">
         <div class="flex items-center gap-1.5 mb-1">
           <Tag size={12} class="text-text-2 shrink-0" />
-          <p class="text-[10px] text-text-2 uppercase tracking-wider">
+          <p class="text-xs text-text-2 uppercase tracking-wider">
             {_("acct.tags")}
           </p>
         </div>
-        <p class="text-[10px] text-text-2/70 mb-2">{_("acct.tags_hint")}</p>
+        <p class="text-xs text-text-2/70 mb-2">{_("acct.tags_hint")}</p>
         {#if tagsFor(store.newAccount.email).length > 0}
-          <div class="flex flex-wrap gap-1 mb-2">
+          <div class="flex flex-wrap gap-1.5 mb-2">
             {#each tagsFor(store.newAccount.email) as tag (tag)}
               <span
-                class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] bg-accent/10 text-accent border border-accent/20"
+                class="inline-flex items-center gap-1 ps-2 pe-1 py-0.5 rounded-md text-xs bg-accent/10 text-accent border border-accent/20"
               >
                 {tag}
                 <button
                   type="button"
-                  class="p-0.5 rounded hover:bg-accent/20"
+                  class="inline-flex items-center justify-center min-w-8 min-h-8 rounded hover:bg-accent/20"
                   onclick={() => dropTag(store.newAccount!.email, tag)}
-                  aria-label={_("action.delete")}
+                  aria-label={_("acct.remove_tag", { tag })}
                 >
-                  <X size={9} />
+                  <X size={14} />
                 </button>
               </span>
             {/each}
           </div>
         {/if}
         {#if tagsFor(store.newAccount.email).length >= MAX_TAGS_PER_USER}
-          <p class="text-[10px] text-text-2/70">{_("acct.tags_full")}</p>
+          <p class="text-xs text-text-2/70">{_("acct.tags_full")}</p>
         {:else}
         <form
           class="flex gap-1.5"
